@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Coverage Timeline</title>
+<title>Interactive Iramuteq corpus exploration</title>
 <style>
   :root {
     --bg:#f3ede0; --panel:#faf7ef; --edge:#e4dcc6; --ink:#2b2620; --ink-soft:#6b6153; --mark:#f2d24a;
@@ -95,19 +95,37 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>Coverage Timeline</h1>
+  <h1>Interactive Iramuteq corpus exploration</h1>
 
   <div class="toolbar">
     <div class="field">
       <label for="folderInput">Analysis folder (the alceste_N folder — contains profiles.csv, uce.csv...)</label>
-      <input id="folderInput" type="text" placeholder="/home/you/my_corpus_1/my_corpus_1_alceste_1">
+      <div style="display:flex; gap:6px;">
+        <input id="folderInput" type="text" placeholder="/home/you/my_corpus_1/my_corpus_1_alceste_1" style="flex:1;">
+        <button type="button" id="browseFolderBtn" class="mini-btn" style="flex-shrink:0;">Browse…</button>
+      </div>
     </div>
     <div class="field">
-      <label for="csvInput">Original source CSV (optional — links #rawnb to each article's URL)</label>
-      <input id="csvInput" type="text" placeholder="/home/you/my_articles.csv — leave empty to skip">
+      <label for="csvFileInput">Original source CSV (optional — the Media Cloud export this corpus was built from; links #rawnb to each article's URL, title, outlet and dates)</label>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <button type="button" id="csvPickBtn" class="mini-btn" style="flex-shrink:0;">Choose CSV file…</button>
+        <span id="csvFileName" style="font-family:var(--font-data); font-size:11.5px; color:var(--ink-soft);">No file chosen</span>
+        <input id="csvFileInput" type="file" accept=".csv" style="display:none;">
+      </div>
     </div>
     <button id="loadBtn">Load</button>
     <span class="status" id="status"></span>
+  </div>
+
+  <div id="folderBrowserBackdrop" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:49;"></div>
+  <div id="folderBrowser" style="display:none; position:fixed; top:60px; left:50%; transform:translateX(-50%); width:min(560px, 90vw); max-height:70vh; overflow-y:auto; z-index:50; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,0.35);">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <h2 id="browserTitle" style="margin:0; font-family:var(--font-display); font-size:14px;">Choose a folder</h2>
+      <button type="button" id="closeBrowserBtn" class="mini-btn">✕ Close</button>
+    </div>
+    <div id="browserCrumbs" style="font-family:var(--font-data); font-size:12px; margin-bottom:10px; display:flex; flex-wrap:wrap; gap:2px; align-items:center;"></div>
+    <div id="browserList" style="display:flex; flex-direction:column; gap:2px; margin-bottom:10px; border-top:1px solid var(--edge); padding-top:8px;"></div>
+    <button type="button" id="useThisFolderBtn" class="mini-btn">Use this folder</button>
   </div>
 
   <div class="panel" id="controlsPanel" style="display:none;">
@@ -164,6 +182,7 @@
     <div class="breadcrumb" id="breadcrumb" style="display:none;"></div>
     <svg id="chart" viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="note" id="methodNote"></div>
+    <div id="chartTagLegend" style="display:none; flex-wrap:wrap; gap:10px; margin-top:8px;"></div>
   </div>
 
   <div class="panel" id="quotesPanel" style="display:none;">
@@ -186,10 +205,41 @@
   </div>
 
   <div class="panel" id="dossierPanel" style="display:none;">
-    <h2>Dossier</h2>
+    <h2>Dossier <span id="dossierSaveStatus" style="font-family:var(--font-data); font-size:10.5px; color:var(--ink-soft); font-weight:400;"></span></h2>
+    <div class="note" style="margin-bottom:10px;">Add a comment and/or tags to any citation below. Tags are your own annotations (not from Iramuteq or the CSV) — comma-separated, e.g. "follow up, disputed claim".</div>
+    <label style="display:flex; align-items:center; gap:6px; font-size:12px; margin-bottom:10px;">
+      <input type="checkbox" id="showTagsOnChart"> Show dossier tags on the chart
+    </label>
+    <div id="tagLegend" style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:10px;"></div>
+    <div id="dossierFilterNote" class="note" style="display:none; margin-bottom:10px;"></div>
     <div id="dossierList"></div>
-    <button class="mini-btn" id="copyDossierBtn" style="margin-top:10px;">Copy all as citations</button>
+    <div style="display:flex; gap:10px; margin-top:10px; flex-wrap:wrap; align-items:center;">
+      <button class="mini-btn" id="copyDossierBtn">Copy all as citations</button>
+      <button class="mini-btn" id="exportZoteroBtn">Export for Zotero (.ris)</button>
+    </div>
     <div class="note" id="dossierCopyNote"></div>
+  </div>
+
+  <div class="panel" id="methodologyPanel">
+    <h2 id="methodologyToggle" style="cursor:pointer; user-select:none;">▸ How these statistics are calculated</h2>
+    <div id="methodologyBody" style="display:none;">
+      <p style="margin-top:0;"><strong>From Iramuteq itself, unchanged:</strong></p>
+      <ul style="margin-top:4px;">
+        <li>Which class each text segment belongs to — from <code>uce.csv</code>.</li>
+        <li>Each class's characteristic words, their χ² and p-value — from <code>profiles.csv</code>, Iramuteq's own specificity test (the Reinert method). This app never recomputes χ² or p-values itself.</li>
+        <li>Class sizes and the AFC eigenvalues, where shown.</li>
+      </ul>
+      <p><strong>Computed by this app, not Iramuteq:</strong></p>
+      <ul style="margin-top:4px;">
+        <li><strong>"% of period"</strong> in the chart: (segments of a class in a period) ÷ (total classified segments in that period) × 100.</li>
+        <li><strong>Outlet index</strong> in Outlets × classes: (an outlet's share of a class) ÷ (the shown corpus's overall share of that class) × 100. 100 = matches the corpus average exactly.</li>
+        <li><strong>Segment ranking</strong> within a period: segments are sorted by the sum of χ² of their class's characteristic words that literally appear in the segment's text (a plain substring check against Iramuteq's own word list and χ² values — not a new statistical test).</li>
+        <li><strong>Swing sentences</strong> in "What happened": a plain percentage-point comparison between one period and the previous one.</li>
+        <li><strong>"Possible shared/syndicated coverage"</strong>: a title-similarity heuristic (matching near-identical headlines published the same day) — not a feature of Iramuteq or Media Cloud, and not proof of actual syndication.</li>
+        <li><strong>Outlet dominance warning</strong>: a simple article-share comparison against an even split across outlets.</li>
+        <li><strong>Everything in the Dossier</strong> — comments, tags, citation text — is your own annotation, saved only to small files next to your analysis folder.</li>
+      </ul>
+    </div>
   </div>
 </div>
 
@@ -208,9 +258,169 @@ let activeClass = null;
 let zoomYear = null;   // set when the user drills down from year -> month
 let zoomMonth = null;  // set when the user drills down from month -> day
 let churnalismClusters = [];
-let dossier = [];      // {segId, outlet, title, publish_date, url, classLabel, text, matched}
+let dossier = [];      // {segId, outlet, title, publish_date, url, classLabel, text, matched, comment, tags}
+let tagColors = {};    // {tagName: '#hexcolor'} - user-assignable per tag
+
+async function saveDossier() {
+  if (!folderPath) return;
+  const status = document.getElementById('dossierSaveStatus');
+  try {
+    await postJson('/api/save_dossier', { folder: folderPath, items: dossier, tag_colors: tagColors });
+    if (status) {
+      status.textContent = '· saved';
+      setTimeout(() => { if (status.textContent === '· saved') status.textContent = ''; }, 2000);
+    }
+  } catch (e) {
+    console.error('Could not save dossier:', e);
+    if (status) status.textContent = '· save failed';
+  }
+}
+const TAG_PALETTE = ['#c77b3e', '#3e7fc7', '#8c3e9b', '#3e9b6b', '#c73e5f', '#9b8c3e'];
+
+function colorForTag(tag) {
+  if (!tagColors[tag]) {
+    const used = Object.keys(tagColors).length;
+    tagColors[tag] = TAG_PALETTE[used % TAG_PALETTE.length];
+  }
+  return tagColors[tag];
+}
+
+function allDossierTags() {
+  const set = new Set();
+  dossier.forEach(d => (d.tags || []).forEach(t => set.add(t)));
+  return [...set].sort();
+}
+
+let selectedTags = new Set();     // Dossier-list filter (OR match); empty = show all citations
+let chartHiddenTags = new Set();  // Tags explicitly hidden from the chart; empty = all tags shown (default)
+
+function toggleTagFilter(tag) {
+  if (selectedTags.has(tag)) selectedTags.delete(tag);
+  else selectedTags.add(tag);
+  renderDossier();
+  renderTagLegend();
+}
+
+function toggleChartTagVisibility(tag) {
+  if (chartHiddenTags.has(tag)) chartHiddenTags.delete(tag);
+  else chartHiddenTags.add(tag);
+  renderTagLegend();
+  buildChart();
+}
+
+function renderTagLegendInto(containerId, mode) {
+  const box = document.getElementById(containerId);
+  const tags = allDossierTags();
+  box.innerHTML = tags.map(t => {
+    const active = mode === 'chart' ? !chartHiddenTags.has(t) : selectedTags.has(t);
+    return `<div style="display:flex; align-items:center; gap:5px;">
+      <input type="color" class="tag-color-input" data-tag="${t}" value="${colorForTag(t)}" style="width:20px; height:20px; padding:0; border:1px solid var(--edge); cursor:pointer;">
+      <span class="tag-name-btn" data-tag="${t}" data-mode="${mode}" style="cursor:pointer; font-size:12px; padding:2px 8px; border-radius:10px;
+            ${active ? 'background:var(--ink); color:var(--panel);' : 'background:var(--bg); border:1px solid var(--edge); color:var(--ink);'}">${t}</span>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.tag-color-input').forEach(el => {
+    el.addEventListener('input', () => {
+      tagColors[el.dataset.tag] = el.value;
+      buildChart();
+    });
+    el.addEventListener('change', () => { saveDossier(); });
+  });
+  box.querySelectorAll('.tag-name-btn').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.dataset.mode === 'chart') toggleChartTagVisibility(el.dataset.tag);
+      else toggleTagFilter(el.dataset.tag);
+    });
+  });
+}
+
+function renderTagLegend() {
+  // drop any filter/hide state for a tag that no longer exists on any citation
+  const existing = new Set(allDossierTags());
+  [...selectedTags].forEach(t => { if (!existing.has(t)) selectedTags.delete(t); });
+  [...chartHiddenTags].forEach(t => { if (!existing.has(t)) chartHiddenTags.delete(t); });
+  renderTagLegendInto('tagLegend', 'dossier');
+  const chartBox = document.getElementById('chartTagLegend');
+  const show = document.getElementById('showTagsOnChart').checked && allDossierTags().length > 0;
+  chartBox.style.display = show ? 'flex' : 'none';
+  if (show) renderTagLegendInto('chartTagLegend', 'chart');
+}
 
 function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+let browserCurrentPath = null;
+
+function closeBrowser() {
+  document.getElementById('folderBrowser').style.display = 'none';
+  document.getElementById('folderBrowserBackdrop').style.display = 'none';
+}
+
+async function openBrowser(path) {
+  const url = '/api/browse?path=' + encodeURIComponent(path || '');
+  document.getElementById('folderBrowser').style.display = 'block';
+  document.getElementById('folderBrowserBackdrop').style.display = 'block';
+  let data;
+  try {
+    data = await (await fetch(url)).json();
+  } catch (e) {
+    document.getElementById('browserList').innerHTML = `<div class="empty-note">Could not reach the server: ${e}</div>`;
+    return;
+  }
+  if (data.error) {
+    document.getElementById('browserList').innerHTML = `<div class="empty-note">${data.error}</div>`;
+    return;
+  }
+  browserCurrentPath = data.path;
+
+  // breadcrumb: each path segment is its own clickable jump-to-here link
+  const parts = data.path.split('/').filter(Boolean);
+  let acc = '';
+  const crumbHtml = ['<span class="crumb" data-path="/" style="cursor:pointer; padding:2px 6px; border-radius:10px; background:var(--bg); border:1px solid var(--edge);">/</span>'];
+  parts.forEach(part => {
+    acc += '/' + part;
+    crumbHtml.push('<span style="color:var(--ink-soft);">›</span>');
+    crumbHtml.push(`<span class="crumb" data-path="${acc}" style="cursor:pointer; padding:2px 6px; border-radius:10px; background:var(--bg); border:1px solid var(--edge);">${part}</span>`);
+  });
+  document.getElementById('browserCrumbs').innerHTML = crumbHtml.join(' ');
+  document.getElementById('browserCrumbs').querySelectorAll('.crumb').forEach(el => {
+    el.addEventListener('click', () => openBrowser(el.dataset.path));
+  });
+
+  const rows = [];
+  data.entries.filter(e => e.is_dir).forEach(e => {
+    const full = data.path.replace(/\/+$/, '') + '/' + e.name;
+    const hint = e.is_analysis_folder ? ' — looks like an Iramuteq analysis folder' : '';
+    rows.push(`<div class="browser-row" data-path="${full}" style="cursor:pointer; padding:8px 8px; border-radius:4px; ${e.is_analysis_folder ? 'font-weight:700;' : ''}">
+      ${e.is_analysis_folder ? '📁✓' : '📁'} ${e.name}${hint}
+    </div>`);
+  });
+  document.getElementById('browserList').innerHTML = rows.join('') || '<div class="empty-note">No subfolders here.</div>';
+  document.getElementById('browserList').querySelectorAll('.browser-row').forEach(el => {
+    el.addEventListener('mouseenter', () => { el.style.background = 'var(--bg)'; });
+    el.addEventListener('mouseleave', () => { el.style.background = 'transparent'; });
+    el.addEventListener('click', () => openBrowser(el.dataset.path));
+  });
+  document.getElementById('folderBrowser').style.display = 'block';
+  document.getElementById('folderBrowserBackdrop').style.display = 'block';
+}
+
+document.getElementById('browseFolderBtn').addEventListener('click', () => {
+  openBrowser(document.getElementById('folderInput').value.trim() || null);
+});
+document.getElementById('closeBrowserBtn').addEventListener('click', closeBrowser);
+document.getElementById('folderBrowserBackdrop').addEventListener('click', closeBrowser);
+document.getElementById('useThisFolderBtn').addEventListener('click', () => {
+  if (browserCurrentPath) document.getElementById('folderInput').value = browserCurrentPath;
+  closeBrowser();
+});
+
+document.getElementById('csvPickBtn').addEventListener('click', () => {
+  document.getElementById('csvFileInput').click();
+});
+document.getElementById('csvFileInput').addEventListener('change', () => {
+  const f = document.getElementById('csvFileInput').files[0];
+  document.getElementById('csvFileName').textContent = f ? f.name : 'No file chosen';
+});
 
 async function postJson(url, body) {
   const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
@@ -219,11 +429,15 @@ async function postJson(url, body) {
 
 document.getElementById('loadBtn').addEventListener('click', async () => {
   folderPath = document.getElementById('folderInput').value.trim();
-  const csvPath = document.getElementById('csvInput').value.trim();
   if (!folderPath) { setStatus('Fill in the folder path first.'); return; }
   setStatus('Parsing…');
   try {
-    const result = await postJson('/api/load', { folder: folderPath, csv_path: csvPath });
+    const formData = new FormData();
+    formData.append('folder', folderPath);
+    const csvFile = document.getElementById('csvFileInput').files[0];
+    if (csvFile) formData.append('csv_file', csvFile);
+    const res = await fetch('/api/load', { method: 'POST', body: formData });
+    const result = await res.json();
     if (result.error) { setStatus('Error: ' + result.error); return; }
 
     allClasses = result.classes;
@@ -232,14 +446,17 @@ document.getElementById('loadBtn').addEventListener('click', async () => {
     availability = result.availability;
     currentEvents = result.events || [];
     churnalismClusters = result.similar_title_clusters || [];
-    dossier = [];
+    dossier = (result.dossier && result.dossier.items) || [];
+    tagColors = (result.dossier && result.dossier.tag_colors) || {};
+    selectedTags = new Set();
+    chartHiddenTags = new Set();
     selectedSources = new Set();
     activePeriod = null;
     activeClass = null;
     zoomYear = null;
     zoomMonth = null;
 
-    granularity = availability.day ? 'day' : availability.month ? 'month' : availability.year ? 'year' : null;
+    granularity = availability.year ? 'year' : availability.month ? 'month' : availability.day ? 'day' : null;
     if (!granularity) { setStatus('No usable date, month, or year metadata found in this corpus.'); return; }
 
     setStatus(`Loaded ${allSegments.length} classified segments (of ${result.total_classified} Iramuteq reports classified).` + (result.csv_note ? ' ' + result.csv_note : ''));
@@ -254,6 +471,7 @@ document.getElementById('loadBtn').addEventListener('click', async () => {
     renderOutletTable();
     renderChurnalism();
     renderDossier();
+    renderTagLegend();
     renderAll();
   } catch (e) {
     setStatus('Error: ' + e);
@@ -474,18 +692,26 @@ document.getElementById('churnalismToggle').addEventListener('click', () => {
   document.getElementById('churnalismBody').style.display = churnalismFolded ? 'none' : 'block';
 });
 
+let methodologyFolded = true;
+document.getElementById('methodologyToggle').addEventListener('click', () => {
+  methodologyFolded = !methodologyFolded;
+  document.getElementById('methodologyToggle').textContent = (methodologyFolded ? '▸' : '▾') + ' How these statistics are calculated';
+  document.getElementById('methodologyBody').style.display = methodologyFolded ? 'none' : 'block';
+});
+
 function renderChurnalism() {
   const panel = document.getElementById('churnalismPanel');
   const box = document.getElementById('churnalismList');
   if (!churnalismClusters.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  box.innerHTML = churnalismClusters.slice(0, 30).map(cl => {
+  box.innerHTML = `<div class="note" style="margin-bottom:10px;">Within each group, articles are listed in the order they were <strong>indexed</strong> by Media Cloud — i.e. when its crawler found the page, not necessarily when the article was actually published. The two can differ (a republish, a delayed crawl, a backdated article), so treat the ordering below as "who Media Cloud saw first," not a confirmed "who published first."</div>` +
+    churnalismClusters.slice(0, 30).map(cl => {
     const outlets = [...new Set(cl.items.map(i => i.outlet).filter(Boolean))];
     return `<div class="quote-card" style="border-left-color:var(--ink-soft); margin-bottom:10px;">
       <div class="quote-meta"><span>${cl.date} · ${outlets.length} outlets</span></div>
       ${cl.items.map(it => `<div style="margin:5px 0;">
         <a href="${it.url}" target="_blank" rel="noopener">${it.title}</a>
-        <span class="score-tag"> — ${it.outlet || ''}</span>
+        <span class="score-tag"> — ${it.outlet || ''}${it.indexed_date ? ' · indexed ' + it.indexed_date : ''}</span>
       </div>`).join('')}
     </div>`;
   }).join('');
@@ -503,9 +729,13 @@ function toggleDossier(seg) {
     dossier.push({
       segId: seg.id, outlet: sourceOf(seg), title: seg.title, publish_date: seg.publish_date,
       url: seg.url, classLabel: c ? c.label : seg.class_id, text: seg.text, matched,
+      comment: '', tags: [],
     });
   }
   renderDossier();
+  renderTagLegend();
+  buildChart();
+  saveDossier();
   document.querySelectorAll(`.dossier-btn[data-seg="${seg.id}"]`).forEach(btn => {
     btn.textContent = isInDossier(seg.id) ? '✓ In dossier' : '+ Add to dossier';
   });
@@ -528,15 +758,36 @@ function formatCitation(d) {
   if (d.matched && d.matched.length) {
     out += `\nCharacteristic words (${d.classLabel}): ` + d.matched.map(m => `${m.word} (χ²=${m.chi2.toFixed(0)}, ${formatPval(m.pval)})`).join(', ');
   }
+  if (d.tags && d.tags.length) out += `\nTags: ${d.tags.join(', ')}`;
+  if (d.comment) out += `\nComment: ${d.comment}`;
   return out;
 }
 
 function renderDossier() {
   const panel = document.getElementById('dossierPanel');
   const box = document.getElementById('dossierList');
+  const filterNote = document.getElementById('dossierFilterNote');
   if (!dossier.length) { panel.style.display = 'none'; return; }
   panel.style.display = 'block';
-  box.innerHTML = dossier.map(d => `
+
+  const filtered = selectedTags.size > 0
+    ? dossier.filter(d => (d.tags || []).some(t => selectedTags.has(t)))
+    : dossier;
+
+  if (selectedTags.size > 0) {
+    filterNote.style.display = 'block';
+    filterNote.innerHTML = `Showing ${filtered.length} of ${dossier.length} citation(s) tagged: ${[...selectedTags].join(', ')}
+      <span id="clearTagFilter" style="cursor:pointer; text-decoration:underline; margin-left:6px;">Show all citations</span>`;
+    document.getElementById('clearTagFilter').addEventListener('click', () => {
+      selectedTags.clear();
+      renderDossier();
+      renderTagLegend();
+    });
+  } else {
+    filterNote.style.display = 'none';
+  }
+
+  box.innerHTML = filtered.map(d => `
     <div class="quote-card" style="border-left-color:var(--ink-soft);">
       <div class="quote-meta">
         <span>${d.outlet || ''}${d.publish_date ? ' · ' + d.publish_date : ''} · ${d.classLabel}</span>
@@ -544,6 +795,12 @@ function renderDossier() {
       </div>
       ${d.title ? `<div style="font-weight:600; margin-bottom:3px;">${d.title}</div>` : ''}
       ${d.text}
+      <div style="margin-top:8px; display:flex; flex-direction:column; gap:6px;">
+        <input type="text" class="dossier-tags" data-seg="${d.segId}" placeholder="Tags (comma-separated)" value="${(d.tags || []).join(', ')}"
+               style="font-family:var(--font-data); font-size:11.5px; padding:5px 8px; border:1px solid var(--edge); border-radius:4px; background:var(--bg); color:var(--ink);">
+        <textarea class="dossier-comment" data-seg="${d.segId}" placeholder="Comment (optional)" rows="2"
+               style="font-family:var(--font-body); font-size:12.5px; padding:5px 8px; border:1px solid var(--edge); border-radius:4px; background:var(--bg); color:var(--ink); resize:vertical;">${d.comment || ''}</textarea>
+      </div>
     </div>`).join('');
   box.querySelectorAll('.rm').forEach(el => {
     el.addEventListener('click', () => {
@@ -551,7 +808,25 @@ function renderDossier() {
       if (seg) toggleDossier(seg);
     });
   });
+  box.querySelectorAll('.dossier-tags').forEach(el => {
+    el.addEventListener('change', () => {
+      const d = dossier.find(x => x.segId === parseInt(el.dataset.seg));
+      if (d) d.tags = el.value.split(',').map(t => t.trim()).filter(Boolean);
+      renderTagLegend();
+      buildChart();
+      saveDossier();
+    });
+  });
+  box.querySelectorAll('.dossier-comment').forEach(el => {
+    el.addEventListener('change', () => {
+      const d = dossier.find(x => x.segId === parseInt(el.dataset.seg));
+      if (d) d.comment = el.value;
+      saveDossier();
+    });
+  });
 }
+
+document.getElementById('showTagsOnChart').addEventListener('change', () => { renderTagLegend(); buildChart(); });
 
 document.getElementById('copyDossierBtn').addEventListener('click', async () => {
   const note = document.getElementById('dossierCopyNote');
@@ -570,6 +845,47 @@ document.getElementById('copyDossierBtn').addEventListener('click', async () => 
     note.after(ta);
   }
   setTimeout(() => { note.textContent = ''; }, 4000);
+});
+
+function risEscape(s) { return (s || '').replace(/\r?\n/g, ' ').trim(); }
+
+function buildRis() {
+  return dossier.map(d => {
+    const lines = ['TY  - NEWS'];
+    lines.push(`TI  - ${risEscape(d.title || d.text.slice(0, 80))}`);
+    if (d.outlet) lines.push(`T2  - ${risEscape(d.outlet)}`);
+    if (d.publish_date) {
+      lines.push(`DA  - ${risEscape(d.publish_date)}`);
+      const year = (d.publish_date.match(/\d{4}/) || [])[0];
+      if (year) lines.push(`PY  - ${year}`);
+    }
+    if (d.url) lines.push(`UR  - ${risEscape(d.url)}`);
+    (d.tags || []).forEach(t => lines.push(`KW  - ${risEscape(t)}`));
+    let notes = `Segment: "${d.text}"`;
+    if (d.matched && d.matched.length) {
+      notes += ` | Characteristic words (${d.classLabel}): ` + d.matched.map(m => `${m.word} (χ²=${m.chi2.toFixed(0)}, ${formatPval(m.pval)})`).join(', ');
+    }
+    if (d.comment) notes += ` | Comment: ${d.comment}`;
+    lines.push(`N1  - ${risEscape(notes)}`);
+    lines.push('ER  - ');
+    return lines.join('\n');
+  }).join('\n\n');
+}
+
+document.getElementById('exportZoteroBtn').addEventListener('click', () => {
+  const note = document.getElementById('dossierCopyNote');
+  if (!dossier.length) { note.textContent = 'Add at least one segment first.'; return; }
+  const blob = new Blob([buildRis()], { type: 'application/x-research-info-systems' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'dossier.ris';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  note.textContent = `Downloaded dossier.ris (${dossier.length} reference${dossier.length === 1 ? '' : 's'}) — in Zotero, use File > Import to bring it in.`;
+  setTimeout(() => { note.textContent = ''; }, 6000);
 });
 
 function rawnbHtml(seg) {
@@ -646,7 +962,7 @@ function buildChart() {
 
   if (!series.length) { svg.innerHTML = ''; return; }
 
-  const W = 900, H = 320, padL = 34, padR = 20, padT = 16, padB = 34;
+  const W = 900, H = 320, padL = 34, padR = 20, padT = 30, padB = 34;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const n = series.length;
   const colW = plotW / n;
@@ -687,8 +1003,23 @@ function buildChart() {
     evs.forEach((ev, idx) => {
       const c = ev.class_id ? classById(ev.class_id) : null;
       const dotX = padL + i*colW + colW/2 + (idx - (evs.length-1)/2) * 8;
-      svgContent += `<circle cx="${dotX}" cy="${padT-6}" r="3.5" fill="${c ? c.hex : 'var(--ink-soft)'}" stroke="white" stroke-width="0.75"></circle>`;
+      svgContent += `<circle cx="${dotX}" cy="${padT-10}" r="3.5" fill="${c ? c.hex : 'var(--ink-soft)'}" stroke="white" stroke-width="0.75"></circle>`;
     });
+    if (document.getElementById('showTagsOnChart').checked) {
+      const tagSet = new Set();
+      dossier.forEach(d => {
+        const dseg = allSegments.find(s => s.id === d.segId);
+        if (dseg && dseg[granularity] === p.period && d.tags && d.tags.length) {
+          d.tags.forEach(t => tagSet.add(t));
+        }
+      });
+      const tags = [...tagSet].filter(t => !chartHiddenTags.has(t)).sort();
+      tags.forEach((tag, idx) => {
+        const tagX = padL + i*colW + colW/2 + (idx - (tags.length-1)/2) * 9;
+        const safeTag = tag.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+        svgContent += `<rect x="${tagX-3.5}" y="${padT-22}" width="7" height="7" fill="${colorForTag(tag)}" stroke="white" stroke-width="0.75"><title>${safeTag}</title></rect>`;
+      });
+    }
   });
 
   svgContent += `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="var(--ink-soft)" stroke-width="1"></line>`;

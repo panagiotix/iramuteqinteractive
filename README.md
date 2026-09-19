@@ -31,8 +31,17 @@ It runs entirely on your machine. Nothing is sent anywhere else.
 
 ```bash
 docker build -t iramuteq-explorer .
-docker run --rm -p 5050:5050 -v /path/to/your/iramuteq/projects:/data iramuteq-explorer
+docker run --rm --name iramuteq-explorer -p 5050:5050 \
+  -v <PATH_TO_YOUR_IRAMUTEQ_PROJECTS>:/data \
+  iramuteq-explorer
 ```
+
+⚠️ **`<PATH_TO_YOUR_IRAMUTEQ_PROJECTS>` is a placeholder — replace the
+whole thing**, brackets included, with a real folder on your machine
+(e.g. `/home/you/Documents/my-iramuteq-projects`). If you copy-paste the
+command as-is, Docker will silently create an empty folder at that literal
+path and mount *that* instead — the app will load, the folder browser
+will just show nothing in it, because there's genuinely nothing there.
 
 Then open **http://localhost:5050** yourself — the app tries to open your
 browser automatically, but that trick doesn't work from inside a
@@ -61,8 +70,9 @@ not your real one:
 ```
 /data/my_corpus_1/my_corpus_1_alceste_1
 ```
-Same goes for the optional CSV field — it also needs to be somewhere
-under the folder you mounted.
+The optional CSV field is different: it's a native file picker that
+uploads the file directly to the app, so it can be anywhere on your real
+computer — no mounting or path translation needed for it at all.
 
 ## Running without Docker
 
@@ -127,6 +137,13 @@ the Docker image itself.
 - **"No such file or directory" for your analysis folder**: almost always
   the path-mapping issue above — check you're typing the `/data/...` path,
   not your real host path.
+- **The folder browser shows "No subfolders here" no matter what, and you
+  can't navigate past `/home`**: you're looking at the container's own
+  empty filesystem, not your real machine. Check your `docker run`
+  command actually has a real path before the `:/data` (not the literal
+  `<PATH_TO_YOUR_IRAMUTEQ_PROJECTS>` placeholder from this README, and not
+  a typo'd path Docker silently created as an empty folder). Fix the `-v`
+  flag, `docker stop` the old container, and re-run.
 - **A stale-looking page after updating the code**: hard-refresh the
   browser tab (Ctrl+Shift+R) — Flask serves the page fresh every time, but
   browsers can still cache aggressively.

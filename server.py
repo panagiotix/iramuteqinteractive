@@ -14,7 +14,9 @@ Requires: pip3 install --user flask
 import csv
 import difflib
 import json
+import os
 import re
+import tempfile
 import threading
 import time
 import webbrowser
@@ -32,7 +34,12 @@ MONTH_VARIABLE = "yearmonth"
 YEAR_VARIABLE = "year"
 EVENTS_FILENAME = "timeline_events.json"
 CLASS_NAMES_FILENAME = "timeline_class_names.json"
+DOSSIER_FILENAME = "timeline_dossier.json"
 PORT = 5050
+# Where the folder browser starts: /data if it exists (the Docker case),
+# otherwise the user's home directory (bare-metal case). Override with the
+# ROOT_DIR environment variable if neither default suits you.
+ROOT_DIR = os.environ.get("ROOT_DIR") or ("/data" if os.path.isdir("/data") else str(Path.home()))
 
 app = Flask(__name__)
 
@@ -245,9 +252,13 @@ def index():
 
 @app.route("/api/load", methods=["POST"])
 def api_load():
-    data = request.get_json(force=True)
-    folder_path = (data.get("folder") or "").strip()
-    csv_path = (data.get("csv_path") or "").strip()
+    # multipart/form-data now, not JSON, since the CSV arrives as an
+    # actual uploaded file (a native <input type="file">) rather than a
+    # server-side path - the analysis folder is still a path, since the
+    # app needs to keep reading/writing that same location for
+    # persistence (annotations, renamed classes, the dossier).
+    folder_path = (request.form.get("folder") or "").strip()
+    uploaded_csv = request.files.get("csv_file")
 
     if not folder_path:
         return jsonify({"error": "Please provide the analysis folder path."})
@@ -256,11 +267,13 @@ def api_load():
 
     csv_meta_by_rawnb = {}
     csv_note = None
-    if csv_path:
-        if not Path(csv_path).is_file():
-            return jsonify({"error": f"'{csv_path}' is not a file that exists."})
+    if uploaded_csv and uploaded_csv.filename:
+        tmp_path = None
         try:
-            csv_meta_by_rawnb, m = _load_csv_metadata(csv_path)
+            with tempfile.NamedTemporaryFile(suffix=".csv", delete=False) as tmp:
+                uploaded_csv.save(tmp.name)
+                tmp_path = tmp.name
+            csv_meta_by_rawnb, m = _load_csv_metadata(tmp_path)
             extras = []
             if not m["has_title"]:
                 extras.append("no title column found")
@@ -277,6 +290,12 @@ def api_load():
             )
         except Exception as e:
             return jsonify({"error": f"Could not use that CSV: {e}"})
+        finally:
+            if tmp_path:
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
 
     try:
         result = build_afc_result(folder_path)
@@ -341,7 +360,44 @@ def api_load():
         "events": _load_events(folder_path),
         "csv_note": csv_note,
         "similar_title_clusters": similar_title_clusters[:50],
+        "dossier": _load_json(folder_path, DOSSIER_FILENAME, {"items": [], "tag_colors": {}}),
     })
+
+
+@app.route("/api/save_dossier", methods=["POST"])
+def api_save_dossier():
+    data = request.get_json(force=True)
+    folder_path = data["folder"]
+    _save_json(folder_path, DOSSIER_FILENAME, {
+        "items": data.get("items", []),
+        "tag_colors": data.get("tag_colors", {}),
+    })
+    return jsonify({"ok": True})
+
+
+@app.route("/api/browse")
+def api_browse():
+    path = request.args.get("path") or ROOT_DIR
+    file_ext = (request.args.get("ext") or "").lower().lstrip(".")
+    p = Path(path)
+    if not p.is_dir():
+        return jsonify({"error": f"'{path}' is not a folder."})
+    try:
+        children = sorted(p.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
+    except PermissionError:
+        return jsonify({"error": f"Permission denied reading '{path}'."})
+
+    entries = []
+    for e in children:
+        if e.name.startswith("."):
+            continue
+        if e.is_dir():
+            entries.append({"name": e.name, "is_dir": True, "is_analysis_folder": (e / "profiles.csv").exists()})
+        elif file_ext and e.suffix.lower().lstrip(".") == file_ext:
+            entries.append({"name": e.name, "is_dir": False})
+
+    parent = str(p.parent) if str(p.parent) != str(p) else None
+    return jsonify({"path": str(p), "parent": parent, "entries": entries})
 
 
 @app.route("/api/rename_class", methods=["POST"])
