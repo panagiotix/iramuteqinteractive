@@ -1,0 +1,11 @@
+services:
+  iramuteq-explorer:
+    build: .
+    ports:
+      - "5050:5050"
+    volumes:
+      # Put your Iramuteq project folders (and optional Media Cloud CSV)
+      # inside ./data next to this file - they'll appear as /data inside
+      # the container. See README.md for exactly what path to type into
+      # the app's "Analysis folder" field.
+      - ./data:/data

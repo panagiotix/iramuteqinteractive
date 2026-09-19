@@ -1,0 +1,942 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Coverage Timeline</title>
+<style>
+  :root {
+    --bg:#f3ede0; --panel:#faf7ef; --edge:#e4dcc6; --ink:#2b2620; --ink-soft:#6b6153; --mark:#f2d24a;
+    --font-display: Georgia, 'Nimbus Roman', 'Liberation Serif', serif;
+    --font-body: -apple-system, 'Ubuntu', 'DejaVu Sans', Arial, sans-serif;
+    --font-data: 'Ubuntu Mono', 'DejaVu Sans Mono', 'Liberation Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:var(--font-body); }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 22px 20px 60px; }
+  h1 { font-family: var(--font-display); font-size: 22px; margin: 0 0 14px; }
+
+  .toolbar { display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-bottom: 16px; background:var(--panel); border:1px solid var(--edge); border-radius:6px; padding:12px; }
+  .field { display:flex; flex-direction:column; gap:3px; flex: 1 1 320px; }
+  .field label { font-family: var(--font-data); font-size: 10.5px; color: var(--ink-soft); }
+  .field input {
+    font-family: var(--font-data); font-size: 12.5px; padding: 7px 9px;
+    border: 1px solid var(--edge); border-radius: 4px; background: var(--bg); color: var(--ink);
+  }
+  .toolbar button, .toggle-btn {
+    font-family: var(--font-body); font-weight:600; font-size:12.5px;
+    background: var(--ink); color: var(--panel); border:none; border-radius:4px; padding:9px 14px; cursor:pointer;
+  }
+  .toolbar button:disabled, .toggle-btn:disabled { opacity: 0.4; cursor: default; }
+  .status { font-family: var(--font-data); font-size: 12px; color: var(--ink-soft); flex-basis: 100%; }
+
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 6px; padding: 18px; margin-bottom: 18px; }
+  .panel h2 { font-family: var(--font-display); font-size: 14px; margin: 0 0 10px; }
+  .note { font-size: 12px; color: var(--ink-soft); line-height: 1.5; background: var(--bg); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px; margin-top: 10px; }
+
+  .controls-row { display:flex; gap: 18px; flex-wrap: wrap; align-items:flex-start; margin-bottom: 12px; }
+  .control-group { display:flex; flex-direction:column; gap: 6px; }
+  .control-group .glabel { font-family: var(--font-data); font-size: 10.5px; color: var(--ink-soft); text-transform: uppercase; letter-spacing: .4px; }
+  .toggle-group { display:flex; gap:4px; }
+  .toggle-btn { background: var(--bg); color: var(--ink); border: 1px solid var(--edge); padding: 5px 12px; font-size: 12px; }
+  .toggle-btn.active { background: var(--ink); color: var(--panel); }
+  .source-list { display:flex; flex-wrap:wrap; gap: 6px 12px; max-width: 480px; }
+  .source-list label { font-size: 12px; display:flex; align-items:center; gap:5px; cursor:pointer; }
+
+  .legend { display:flex; gap:14px; flex-wrap:wrap; margin-bottom: 10px; }
+  .legend-item { display:flex; align-items:center; gap:6px; font-family: var(--font-data); font-size: 12px; }
+  .dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .rename-btn { cursor:pointer; color: var(--ink-soft); font-size: 11px; border: none; background: none; padding: 0; }
+  .rename-btn:hover { color: var(--ink); }
+
+  svg { display:block; width:100%; height:auto; }
+  .period-hit { cursor: pointer; }
+  .period-hit rect { fill: transparent; }
+  .period-hit.active rect { fill: rgba(0,0,0,0.06); }
+  .period-tick { cursor: pointer; }
+
+  .quotes-header { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .quotes-header h2 { margin:0; }
+  .mini-btn {
+    font-family: var(--font-body); font-weight:600; font-size:11.5px;
+    background:none; border:1px solid var(--ink-soft); color:var(--ink-soft);
+    border-radius: 12px; padding:3px 10px; cursor:pointer;
+  }
+  .mini-btn:hover { border-color: var(--ink); color: var(--ink); }
+  .event-tag { font-family: var(--font-data); font-size: 11px; background: var(--bg); border:1px solid var(--edge); border-radius: 14px; padding: 3px 10px; display:flex; align-items:center; gap:8px; }
+  .event-tag .rm { cursor:pointer; color: var(--ink-soft); }
+  .event-tag .rm:hover { color: var(--ink); }
+
+  .quotes { display:flex; flex-direction:column; gap:8px; max-height: 380px; overflow-y:auto; }
+  .quote-card { background: var(--bg); border:1px solid var(--edge); border-left:4px solid var(--ink-soft); border-radius:3px; padding:9px 11px; font-size:13px; line-height:1.5; }
+  .quote-meta { font-family: var(--font-data); font-size: 10.5px; color: var(--ink-soft); margin-bottom:4px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+  .score-tag { font-family: var(--font-data); font-size: 10px; color: var(--ink-soft); }
+  .empty-note { text-align:center; color: var(--ink-soft); font-size: 13px; padding: 26px 6px; }
+
+  .callout { display:grid; grid-template-columns: 1.1fr 1fr; gap:18px; }
+  @media (max-width: 820px) { .callout { grid-template-columns: 1fr; } }
+  .callout-text { font-size: 14px; line-height: 1.6; }
+  .kicker { font-family: var(--font-data); font-size: 11px; color: var(--ink-soft); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.4px; }
+  .swing { margin-top: 10px; padding: 9px 11px; background: var(--bg); border-left: 3px solid var(--ink); border-radius: 3px; font-size: 13px; }
+  .headlines { display:flex; flex-direction:column; gap:8px; }
+  .headline-card { background: var(--bg); border:1px solid var(--edge); border-left:4px solid var(--ink-soft); border-radius:3px; padding:9px 11px; font-size:13px; line-height:1.5; }
+
+  .annotations-strip { display:flex; gap:10px; overflow-x:auto; padding-bottom:6px; }
+  .annotation-chip { flex: 0 0 auto; min-width: 150px; max-width:240px; background: var(--bg); border:1px solid var(--edge); border-left:4px solid var(--ink-soft); border-radius:4px; padding:8px 10px; cursor:pointer; }
+  .annotation-chip:hover { border-color: var(--ink); }
+  .annotation-date { font-family: var(--font-data); font-size:10px; color: var(--ink-soft); }
+  .annotation-title { font-size:12.5px; margin-top:2px; line-height:1.4; }
+
+  .breadcrumb { font-family: var(--font-data); font-size: 12px; margin-bottom: 10px; display:flex; align-items:center; gap:6px; }
+  .breadcrumb .crumb { cursor:pointer; padding: 3px 8px; border-radius: 12px; background: var(--bg); border: 1px solid var(--edge); }
+  .breadcrumb .crumb:hover { border-color: var(--ink); }
+  .breadcrumb .crumb-sep { color: var(--ink-soft); }
+  mark { background: var(--mark); padding: 0 2px; border-radius: 2px; color: var(--ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Coverage Timeline</h1>
+
+  <div class="toolbar">
+    <div class="field">
+      <label for="folderInput">Analysis folder (the alceste_N folder — contains profiles.csv, uce.csv...)</label>
+      <input id="folderInput" type="text" placeholder="/home/you/my_corpus_1/my_corpus_1_alceste_1">
+    </div>
+    <div class="field">
+      <label for="csvInput">Original source CSV (optional — links #rawnb to each article's URL)</label>
+      <input id="csvInput" type="text" placeholder="/home/you/my_articles.csv — leave empty to skip">
+    </div>
+    <button id="loadBtn">Load</button>
+    <span class="status" id="status"></span>
+  </div>
+
+  <div class="panel" id="controlsPanel" style="display:none;">
+    <div class="controls-row">
+      <div class="control-group">
+        <span class="glabel">Granularity</span>
+        <div class="toggle-group" id="granularityToggle"></div>
+      </div>
+      <div class="control-group">
+        <span class="glabel">Display</span>
+        <div class="toggle-group">
+          <button class="toggle-btn" id="modeCounts">Counts</button>
+          <button class="toggle-btn" id="modePercent">% of period</button>
+        </div>
+      </div>
+      <div class="control-group">
+        <span class="glabel">Media / source</span>
+        <div class="source-list" id="sourceList"></div>
+      </div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="panel" id="searchPanel" style="display:none;">
+    <h2>Search the corpus</h2>
+    <div class="toolbar" style="margin-bottom:0;">
+      <div class="field" style="flex:1 1 260px;">
+        <label for="searchInput">Word or phrase</label>
+        <input id="searchInput" type="text" placeholder="e.g. πυρκαγια">
+      </div>
+      <button id="searchBtn">Search</button>
+    </div>
+    <div id="searchResults" style="margin-top:14px;"></div>
+  </div>
+
+  <div class="panel" id="outletPanel" style="display:none;">
+    <h2 id="outletToggle" style="cursor:pointer; user-select:none;">▸ Outlets × classes</h2>
+    <div id="outletBody" style="display:none;">
+      <div class="note" style="margin-bottom:10px;">Shows only the outlets currently checked under "Media / source" above. <strong>Articles</strong> = distinct documents linked via your CSV's rawnb. <strong>Segments</strong> = the number of Iramuteq text-segments those articles were split into — that comes from Iramuteq itself, not the CSV, and can differ from article count if an outlet writes longer or shorter pieces. The per-class numbers are an index: 100 means an outlet's segments cover that class exactly as often as the corpus shown here does; well above 100 means it over-indexes on that theme. Outlets with fewer than 5 segments are left out to avoid noise from single-article outlets.</div>
+      <div id="outletTable"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="churnalismPanel" style="display:none;">
+    <h2 id="churnalismToggle" style="cursor:pointer; user-select:none;">▸ Possible shared/syndicated coverage</h2>
+    <div id="churnalismBody" style="display:none;">
+      <div class="note" style="margin-bottom:10px;">Groups of near-identical headlines published by different outlets the same day — a lead worth checking for wire-copy or syndicated stories, not a certainty (this compares titles only, not full article text).</div>
+      <div id="churnalismList"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="chartPanel" style="display:none;">
+    <h2>Coverage by class</h2>
+    <div class="breadcrumb" id="breadcrumb" style="display:none;"></div>
+    <svg id="chart" viewBox="0 0 900 320" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="note" id="methodNote"></div>
+  </div>
+
+  <div class="panel" id="quotesPanel" style="display:none;">
+    <div class="quotes-header">
+      <h2 id="quotesHead">Segments — pick a period</h2>
+      <div id="eventAction"></div>
+    </div>
+    <div class="quotes" id="quotes"></div>
+    <div class="note">Segments are ranked by the sum of χ² (Iramuteq's own specificity statistic, from profiles.csv) of this class's characteristic words that actually appear in each segment's text — the most characteristic segments come first, not database order. Each matched word's own p-value is shown (e.g. "p&lt;0.0001" means the association is extremely unlikely to be chance; "p=0.32 (not significant)" means it isn't a reliable signal) so you can judge significance directly rather than trusting a raw χ² number. Word matching is a simple substring check on the lemma forms Iramuteq already uses, so it can occasionally over-match inside a longer word.</div>
+  </div>
+
+  <div class="panel" id="whPanel" style="display:none;">
+    <h2>What happened</h2>
+    <div id="whatHappened"></div>
+  </div>
+
+  <div class="panel" id="annotationsPanel" style="display:none;">
+    <h2>Annotations timeline</h2>
+    <div class="annotations-strip" id="annotationsStrip"></div>
+  </div>
+
+  <div class="panel" id="dossierPanel" style="display:none;">
+    <h2>Dossier</h2>
+    <div id="dossierList"></div>
+    <button class="mini-btn" id="copyDossierBtn" style="margin-top:10px;">Copy all as citations</button>
+    <div class="note" id="dossierCopyNote"></div>
+  </div>
+</div>
+
+<script>
+let folderPath = null;
+let allSegments = [];       // every segment, unfiltered
+let allClasses = [];        // [{id, label, default_label, hex, n_segments}]
+let wordsByClass = {};      // {class_id: [{word, chi2}, ...]}
+let availability = {day:false, month:false, year:false};
+let currentEvents = [];
+let granularity = null;     // 'day' | 'month' | 'year'
+let showPercent = false;
+let selectedSources = new Set();  // empty set == "all"
+let activePeriod = null;
+let activeClass = null;
+let zoomYear = null;   // set when the user drills down from year -> month
+let zoomMonth = null;  // set when the user drills down from month -> day
+let churnalismClusters = [];
+let dossier = [];      // {segId, outlet, title, publish_date, url, classLabel, text, matched}
+
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
+
+async function postJson(url, body) {
+  const res = await fetch(url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+  return res.json();
+}
+
+document.getElementById('loadBtn').addEventListener('click', async () => {
+  folderPath = document.getElementById('folderInput').value.trim();
+  const csvPath = document.getElementById('csvInput').value.trim();
+  if (!folderPath) { setStatus('Fill in the folder path first.'); return; }
+  setStatus('Parsing…');
+  try {
+    const result = await postJson('/api/load', { folder: folderPath, csv_path: csvPath });
+    if (result.error) { setStatus('Error: ' + result.error); return; }
+
+    allClasses = result.classes;
+    wordsByClass = result.words_by_class;
+    allSegments = result.segments;
+    availability = result.availability;
+    currentEvents = result.events || [];
+    churnalismClusters = result.similar_title_clusters || [];
+    dossier = [];
+    selectedSources = new Set();
+    activePeriod = null;
+    activeClass = null;
+    zoomYear = null;
+    zoomMonth = null;
+
+    granularity = availability.day ? 'day' : availability.month ? 'month' : availability.year ? 'year' : null;
+    if (!granularity) { setStatus('No usable date, month, or year metadata found in this corpus.'); return; }
+
+    setStatus(`Loaded ${allSegments.length} classified segments (of ${result.total_classified} Iramuteq reports classified).` + (result.csv_note ? ' ' + result.csv_note : ''));
+    document.getElementById('controlsPanel').style.display = 'block';
+    document.getElementById('searchPanel').style.display = 'block';
+    document.getElementById('chartPanel').style.display = 'block';
+    document.getElementById('quotesPanel').style.display = 'block';
+
+    buildGranularityToggle();
+    buildSourceList();
+    buildLegend();
+    renderOutletTable();
+    renderChurnalism();
+    renderDossier();
+    renderAll();
+  } catch (e) {
+    setStatus('Error: ' + e);
+  }
+});
+
+document.getElementById('searchBtn').addEventListener('click', runSearch);
+document.getElementById('searchInput').addEventListener('keydown', e => { if (e.key === 'Enter') runSearch(); });
+
+function runSearch() {
+  const qRaw = document.getElementById('searchInput').value.trim();
+  const box = document.getElementById('searchResults');
+  if (!qRaw) { box.innerHTML = ''; return; }
+  const q = qRaw.toLowerCase();
+
+  // is this an exact match for one of Iramuteq's own characteristic words?
+  const charHits = [];
+  allClasses.forEach(c => {
+    const hit = (wordsByClass[c.id] || []).find(w => w.word.toLowerCase() === q);
+    if (hit) charHits.push({ cls: c, ...hit });
+  });
+  charHits.sort((a,b) => b.chi2 - a.chi2);
+
+  const sigNote = charHits.length
+    ? `Iramuteq lists this as a statistically characteristic word for: ${charHits.map(h => `${h.cls.label} (χ²=${h.chi2.toFixed(0)}, ${formatPval(h.pval)})`).join(' · ')}.`
+    : `This exact word/form isn't in Iramuteq's list of statistically characteristic words for any class (it may be too common, too rare, or a different word form than the ones Iramuteq indexed) — the segments below are found by plain text search only, not a statistical test.`;
+
+  const matches = filteredSegments().filter(s => s.text.toLowerCase().includes(q));
+  const byClass = {};
+  matches.forEach(s => { byClass[s.class_id] = (byClass[s.class_id] || 0) + 1; });
+  const breakdown = Object.entries(byClass).sort((a,b) => b[1]-a[1])
+    .map(([cid,n]) => `${classById(cid) ? classById(cid).label : cid}: ${n}`).join(', ');
+
+  const re = new RegExp('(' + qRaw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'ig');
+  const cardsHtml = matches.slice(0, 40).map(s => {
+    const c = classById(s.class_id);
+    const period = s[granularity];
+    return `<div class="quote-card" style="border-left-color:${c ? c.hex : 'var(--ink-soft)'}; cursor:${period ? 'pointer' : 'default'};"
+                 data-period="${period || ''}" data-class="${s.class_id}">
+      <div class="quote-meta"><span>${sourceOf(s) || ''}${s.type ? ' · ' + s.type : ''}${rawnbHtml(s)} · ${c ? c.label : s.class_id}${period ? ' · ' + period : ''}</span></div>
+      ${s.title ? `<div style="font-weight:600; margin-bottom:3px;">${s.title}</div>` : ''}
+      ${s.text.replace(re, '<mark>$1</mark>')}
+      <button class="mini-btn dossier-btn" data-seg="${s.id}" style="margin-top:6px;" onclick="event.stopPropagation()">${isInDossier(s.id) ? '✓ In dossier' : '+ Add to dossier'}</button>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div class="note">${sigNote}</div>
+    <div style="font-size:13px; margin:10px 0;"><strong>${matches.length}</strong> segment(s) contain "${qRaw}"${breakdown ? ' — by class: ' + breakdown : ''}</div>
+    <div class="quotes">${cardsHtml || '<div class="empty-note">No matching segments with the current source filter.</div>'}</div>`;
+
+  box.querySelectorAll('.quote-card[data-period]').forEach(el => {
+    if (!el.dataset.period) return;
+    el.addEventListener('click', () => {
+      zoomYear = null;
+      zoomMonth = null;
+      activePeriod = el.dataset.period;
+      activeClass = el.dataset.class;
+      buildGranularityToggle();
+      renderAll();
+      document.getElementById('quotesPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+  box.querySelectorAll('.dossier-btn').forEach(wireDossierButton);
+}
+
+function buildGranularityToggle() {
+  const box = document.getElementById('granularityToggle');
+  const opts = [['day','Day'], ['month','Month'], ['year','Year']];
+  box.innerHTML = opts.map(([key,label]) =>
+    `<button class="toggle-btn ${granularity===key?'active':''}" data-g="${key}" ${availability[key] ? '' : 'disabled title="Not available: this corpus has no usable ' + key + ' metadata"'}>${label}</button>`
+  ).join('');
+  box.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (btn.disabled) return;
+      granularity = btn.dataset.g;
+      activePeriod = null;
+      activeClass = null;
+      zoomYear = null;
+      zoomMonth = null;
+      buildGranularityToggle();
+      renderAll();
+    });
+  });
+}
+
+document.getElementById('modeCounts').addEventListener('click', () => { showPercent = false; updateModeButtons(); renderAll(); });
+document.getElementById('modePercent').addEventListener('click', () => { showPercent = true; updateModeButtons(); renderAll(); });
+function updateModeButtons() {
+  document.getElementById('modeCounts').classList.toggle('active', !showPercent);
+  document.getElementById('modePercent').classList.toggle('active', showPercent);
+}
+
+function buildSourceList() {
+  const box = document.getElementById('sourceList');
+  const sources = [...new Set(allSegments.map(s => sourceOf(s)).filter(Boolean))].sort();
+  box.innerHTML = `<label><input type="checkbox" id="srcAll" checked> All sources</label>` +
+    sources.map(s => `<label><input type="checkbox" class="srcBox" value="${s}" checked> ${s}</label>`).join('');
+  document.getElementById('srcAll').addEventListener('change', (e) => {
+    box.querySelectorAll('.srcBox').forEach(cb => cb.checked = e.target.checked);
+    updateSelectedSources();
+  });
+  box.querySelectorAll('.srcBox').forEach(cb => cb.addEventListener('change', () => {
+    const all = box.querySelectorAll('.srcBox');
+    const allChecked = [...all].every(c => c.checked);
+    document.getElementById('srcAll').checked = allChecked;
+    updateSelectedSources();
+  }));
+  updateSelectedSources();
+}
+function updateSelectedSources() {
+  const checked = [...document.querySelectorAll('.srcBox:checked')].map(cb => cb.value);
+  const all = document.querySelectorAll('.srcBox').length;
+  selectedSources = checked.length === all ? new Set() : new Set(checked);  // empty = "all"
+  renderOutletTable();
+  renderAll();
+}
+
+function buildLegend() {
+  document.getElementById('legend').innerHTML = allClasses.map(c => `
+    <div class="legend-item">
+      <span class="dot" style="background:${c.hex}"></span>${c.label}
+      <button class="rename-btn" data-id="${c.id}" title="Rename this class">✎</button>
+    </div>`).join('');
+  document.querySelectorAll('.rename-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cls = allClasses.find(c => c.id === btn.dataset.id);
+      const newName = window.prompt(`Rename "${cls.label}" (leave empty to reset to "${cls.default_label}"):`, cls.label);
+      if (newName === null) return;
+      const updated = await postJson('/api/rename_class', { folder: folderPath, class_id: cls.id, name: newName.trim() });
+      cls.label = updated[cls.id] || cls.default_label;
+      buildLegend();
+      renderOutletTable();
+      renderAll();
+    });
+  });
+}
+
+function renderOutletTable() {
+  const panel = document.getElementById('outletPanel');
+  const box = document.getElementById('outletTable');
+  const segs = filteredSegments();  // respects the Media/source checkboxes
+
+  const byOutlet = {};
+  segs.forEach(s => {
+    const o = sourceOf(s);
+    if (!o) return;
+    if (!byOutlet[o]) byOutlet[o] = { articles: new Set(), segments: 0, byClass: {} };
+    if (s.rawnb) byOutlet[o].articles.add(s.rawnb);
+    byOutlet[o].segments += 1;
+    byOutlet[o].byClass[s.class_id] = (byOutlet[o].byClass[s.class_id] || 0) + 1;
+  });
+  const outlets = Object.keys(byOutlet);
+  if (outlets.length < 2) { panel.style.display = 'none'; return; }
+
+  const overallTotal = segs.length;
+  const overallByClass = {};
+  segs.forEach(s => { overallByClass[s.class_id] = (overallByClass[s.class_id] || 0) + 1; });
+
+  const rows = outlets.map(o => ({
+    outlet: o, articles: byOutlet[o].articles.size, segments: byOutlet[o].segments, byClass: byOutlet[o].byClass,
+  })).filter(r => r.segments >= 5).sort((a,b) => b.articles - a.articles);
+
+  if (!rows.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+
+  const totalArticles = rows.reduce((sum, r) => sum + r.articles, 0);
+  let warning = '';
+  if (totalArticles > 0) {
+    const top = rows[0];
+    const sharePct = Math.round((top.articles / totalArticles) * 100);
+    const fairSharePct = Math.round(100 / rows.length);
+    if (sharePct >= 25 && sharePct >= fairSharePct * 1.8) {
+      warning = `<div class="note" style="border-left:3px solid var(--ink); margin-bottom:10px;">
+        <strong>${top.outlet}</strong> accounts for ${sharePct}% of the articles shown here (${top.articles} of ${totalArticles}) —
+        an even split across these ${rows.length} outlets would be about ${fairSharePct}% each. Any class this outlet
+        over-indexes on may partly reflect its own editorial choices rather than the media landscape as a whole.</div>`;
+    }
+  }
+
+  let html = warning + `<div style="overflow-x:auto;"><table style="width:100%; border-collapse:collapse; font-size:12.5px;">
+    <tr><th style="text-align:left; padding:6px;">Outlet</th><th style="padding:6px;">Articles</th><th style="padding:6px;">% of shown corpus</th><th style="padding:6px;">Segments</th>` +
+    allClasses.map(c => `<th style="padding:6px; color:${c.hex};">${c.label}</th>`).join('') + `</tr>`;
+  rows.forEach(r => {
+    const pct = totalArticles ? Math.round((r.articles / totalArticles) * 100) : 0;
+    html += `<tr style="border-top:1px solid var(--edge);">
+      <td style="padding:6px;">${r.outlet}</td>
+      <td style="padding:6px; text-align:center;">${r.articles}</td>
+      <td style="padding:6px; text-align:center;">${pct}%</td>
+      <td style="padding:6px; text-align:center; color:var(--ink-soft);">${r.segments}</td>`;
+    allClasses.forEach(c => {
+      const count = r.byClass[c.id] || 0;
+      const outletShare = r.segments ? count / r.segments : 0;
+      const overallShare = overallTotal ? (overallByClass[c.id] || 0) / overallTotal : 0;
+      const index = overallShare > 0 ? Math.round((outletShare / overallShare) * 100) : null;
+      const strong = index !== null && index >= 130;
+      const weak = index !== null && index <= 70;
+      const color = strong ? c.hex : weak ? 'var(--ink-soft)' : 'var(--ink)';
+      html += `<td style="padding:6px; text-align:center; color:${color}; font-weight:${strong ? '700' : '400'};">${index === null ? '—' : index}</td>`;
+    });
+    html += `</tr>`;
+  });
+  html += `</table></div>`;
+  box.innerHTML = html;
+}
+
+let outletFolded = true;
+document.getElementById('outletToggle').addEventListener('click', () => {
+  outletFolded = !outletFolded;
+  document.getElementById('outletToggle').textContent = (outletFolded ? '▸' : '▾') + ' Outlets × classes';
+  document.getElementById('outletBody').style.display = outletFolded ? 'none' : 'block';
+});
+
+let churnalismFolded = true;
+document.getElementById('churnalismToggle').addEventListener('click', () => {
+  churnalismFolded = !churnalismFolded;
+  document.getElementById('churnalismToggle').textContent = (churnalismFolded ? '▸' : '▾') + ' Possible shared/syndicated coverage';
+  document.getElementById('churnalismBody').style.display = churnalismFolded ? 'none' : 'block';
+});
+
+function renderChurnalism() {
+  const panel = document.getElementById('churnalismPanel');
+  const box = document.getElementById('churnalismList');
+  if (!churnalismClusters.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  box.innerHTML = churnalismClusters.slice(0, 30).map(cl => {
+    const outlets = [...new Set(cl.items.map(i => i.outlet).filter(Boolean))];
+    return `<div class="quote-card" style="border-left-color:var(--ink-soft); margin-bottom:10px;">
+      <div class="quote-meta"><span>${cl.date} · ${outlets.length} outlets</span></div>
+      ${cl.items.map(it => `<div style="margin:5px 0;">
+        <a href="${it.url}" target="_blank" rel="noopener">${it.title}</a>
+        <span class="score-tag"> — ${it.outlet || ''}</span>
+      </div>`).join('')}
+    </div>`;
+  }).join('');
+}
+
+function isInDossier(segId) { return dossier.some(d => d.segId === segId); }
+
+function toggleDossier(seg) {
+  const idx = dossier.findIndex(d => d.segId === seg.id);
+  if (idx >= 0) {
+    dossier.splice(idx, 1);
+  } else {
+    const c = classById(seg.class_id);
+    const { matched } = scoreSegment(seg);
+    dossier.push({
+      segId: seg.id, outlet: sourceOf(seg), title: seg.title, publish_date: seg.publish_date,
+      url: seg.url, classLabel: c ? c.label : seg.class_id, text: seg.text, matched,
+    });
+  }
+  renderDossier();
+  document.querySelectorAll(`.dossier-btn[data-seg="${seg.id}"]`).forEach(btn => {
+    btn.textContent = isInDossier(seg.id) ? '✓ In dossier' : '+ Add to dossier';
+  });
+}
+
+function wireDossierButton(btn) {
+  btn.addEventListener('click', () => {
+    const seg = allSegments.find(s => s.id === parseInt(btn.dataset.seg));
+    if (seg) toggleDossier(seg);
+  });
+}
+
+function formatCitation(d) {
+  let head = '';
+  if (d.outlet) head += d.outlet;
+  if (d.title) head += (head ? ', ' : '') + `"${d.title}"`;
+  if (d.publish_date) head += `, ${d.publish_date}`;
+  if (d.url) head += `. ${d.url}`;
+  let out = head + (head ? '\n' : '') + `"${d.text}"`;
+  if (d.matched && d.matched.length) {
+    out += `\nCharacteristic words (${d.classLabel}): ` + d.matched.map(m => `${m.word} (χ²=${m.chi2.toFixed(0)}, ${formatPval(m.pval)})`).join(', ');
+  }
+  return out;
+}
+
+function renderDossier() {
+  const panel = document.getElementById('dossierPanel');
+  const box = document.getElementById('dossierList');
+  if (!dossier.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  box.innerHTML = dossier.map(d => `
+    <div class="quote-card" style="border-left-color:var(--ink-soft);">
+      <div class="quote-meta">
+        <span>${d.outlet || ''}${d.publish_date ? ' · ' + d.publish_date : ''} · ${d.classLabel}</span>
+        <span class="rm" data-seg="${d.segId}">✕ remove</span>
+      </div>
+      ${d.title ? `<div style="font-weight:600; margin-bottom:3px;">${d.title}</div>` : ''}
+      ${d.text}
+    </div>`).join('');
+  box.querySelectorAll('.rm').forEach(el => {
+    el.addEventListener('click', () => {
+      const seg = allSegments.find(s => s.id === parseInt(el.dataset.seg));
+      if (seg) toggleDossier(seg);
+    });
+  });
+}
+
+document.getElementById('copyDossierBtn').addEventListener('click', async () => {
+  const note = document.getElementById('dossierCopyNote');
+  if (!dossier.length) { note.textContent = 'Add at least one segment first.'; return; }
+  const text = dossier.map(formatCitation).join('\n\n---\n\n');
+  try {
+    await navigator.clipboard.writeText(text);
+    note.textContent = `Copied ${dossier.length} citation(s) to clipboard.`;
+  } catch (e) {
+    note.textContent = 'Could not access clipboard — select and copy manually below.';
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.rows = 8;
+    ta.style.width = '100%';
+    ta.style.marginTop = '8px';
+    note.after(ta);
+  }
+  setTimeout(() => { note.textContent = ''; }, 4000);
+});
+
+function rawnbHtml(seg) {
+  if (!seg.rawnb) return '';
+  return seg.url
+    ? ` · <a href="${seg.url}" target="_blank" rel="noopener">#${seg.rawnb}</a>`
+    : ` · #${seg.rawnb}`;
+}
+
+function sourceOf(seg) { return seg.outlet || seg.source; }
+
+function classById(id) { return allClasses.find(c => c.id === id); }
+
+function filteredSegments() {
+  if (selectedSources.size === 0) return allSegments;
+  return allSegments.filter(s => selectedSources.has(sourceOf(s)));
+}
+
+function computeSeries() {
+  let segs = filteredSegments();
+  if (granularity === 'month' && zoomYear) segs = segs.filter(s => s.year === zoomYear);
+  if (granularity === 'day' && zoomMonth) segs = segs.filter(s => s.month === zoomMonth);
+  const buckets = {};
+  let skipped = 0;
+  segs.forEach(s => {
+    const key = s[granularity];
+    if (!key) { skipped++; return; }
+    if (!buckets[key]) buckets[key] = {};
+    buckets[key][s.class_id] = (buckets[key][s.class_id] || 0) + 1;
+  });
+  const periods = Object.keys(buckets).sort();
+  const series = periods.map(p => ({ period: p, counts: buckets[p] }));
+  return { series, skipped };
+}
+
+function renderBreadcrumb() {
+  const el = document.getElementById('breadcrumb');
+  if (!zoomYear && !zoomMonth) { el.style.display = 'none'; return; }
+  el.style.display = 'flex';
+  let parts = [`<span class="crumb" data-action="top">All years</span>`];
+  if (zoomYear) parts.push(`<span class="crumb-sep">›</span><span class="crumb" data-action="year">${zoomYear}</span>`);
+  if (zoomMonth) parts.push(`<span class="crumb-sep">›</span><span class="crumb" data-action="month">${zoomMonth}</span>`);
+  el.innerHTML = parts.join('');
+  el.querySelectorAll('.crumb').forEach(c => {
+    c.addEventListener('click', () => {
+      const action = c.dataset.action;
+      if (action === 'top') { zoomYear = null; zoomMonth = null; granularity = 'year'; }
+      if (action === 'year') { zoomMonth = null; granularity = 'month'; }
+      if (action === 'month') { granularity = 'day'; }
+      activePeriod = null;
+      activeClass = null;
+      buildGranularityToggle();
+      renderAll();
+    });
+  });
+}
+
+function renderAll() {
+  buildChart();
+  renderQuotes();
+  renderWhatHappened();
+  renderAnnotationsStrip();
+  renderBreadcrumb();
+}
+
+function buildChart() {
+  const { series, skipped } = computeSeries();
+  const svg = document.getElementById('chart');
+  const note = document.getElementById('methodNote');
+  const modeText = showPercent
+    ? `Each period's stack is normalised to 100%: a class's height here = (segments of that class in this ${granularity}) ÷ (total classified segments in this ${granularity}) × 100. This is computed by this app - Iramuteq itself only assigns each segment to a class, it does not compute period percentages.`
+    : `Bars show raw segment counts per ${granularity}, stacked by class. Click any colored segment in a bar to see that class's characteristic segments for that period; click the date label below a bar to see all classes for that period. Switch to "% of period" to see relative composition instead of volume.`;
+  note.textContent = modeText + (skipped ? ` (${skipped} segments have no usable ${granularity} value and are excluded from this chart.)` : '');
+
+  if (!series.length) { svg.innerHTML = ''; return; }
+
+  const W = 900, H = 320, padL = 34, padR = 20, padT = 16, padB = 34;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const n = series.length;
+  const colW = plotW / n;
+
+  let maxTotal = showPercent ? 100 : Math.max(...series.map(p => Object.values(p.counts).reduce((a,b)=>a+b,0)), 1);
+  const labelEvery = Math.max(1, Math.ceil(n / 14));
+
+  let svgContent = '';
+  series.forEach((p, i) => {
+    const total = Object.values(p.counts).reduce((a,b)=>a+b,0) || 1;
+    let yCursor = padT + plotH;
+    allClasses.forEach(c => {
+      const raw = p.counts[c.id] || 0;
+      if (raw <= 0) return;
+      const val = showPercent ? (raw / total) * 100 : raw;
+      const h = (val / maxTotal) * plotH;
+      yCursor -= h;
+      const isExact = activePeriod === p.period && activeClass === c.id;
+      const isBroadHighlight = !activePeriod && activeClass === c.id;
+      const isDimmed = activeClass && activeClass !== c.id;
+      let opacity = 0.82;
+      if (isExact || isBroadHighlight) opacity = 1;
+      else if (isDimmed) opacity = 0.22;
+      svgContent += `
+        <g class="class-hit" data-period="${p.period}" data-class="${c.id}" style="cursor:pointer;">
+          <rect x="${padL + i*colW + 2}" y="${yCursor}" width="${colW - 4}" height="${Math.max(h,0.5)}"
+                fill="${c.hex}" fill-opacity="${opacity}"
+                stroke="${isExact ? 'var(--ink)' : 'none'}" stroke-width="1.5"></rect>
+        </g>`;
+    });
+    const labelText = (i % labelEvery === 0 || i === n-1) ? p.period : '';
+    svgContent += `
+      <g class="period-label" data-period="${p.period}" style="cursor:pointer;">
+        <rect x="${padL+i*colW}" y="${H-padB}" width="${colW}" height="${padB}" fill="transparent"></rect>
+        <text x="${padL + i*colW + colW/2}" y="${H-10}" text-anchor="middle" font-family="var(--font-data)" font-size="9.5" fill="var(--ink-soft)">${labelText}</text>
+      </g>`;
+    const evs = eventsForPeriod(p.period);
+    evs.forEach((ev, idx) => {
+      const c = ev.class_id ? classById(ev.class_id) : null;
+      const dotX = padL + i*colW + colW/2 + (idx - (evs.length-1)/2) * 8;
+      svgContent += `<circle cx="${dotX}" cy="${padT-6}" r="3.5" fill="${c ? c.hex : 'var(--ink-soft)'}" stroke="white" stroke-width="0.75"></circle>`;
+    });
+  });
+
+  svgContent += `<line x1="${padL}" y1="${padT}" x2="${padL}" y2="${H-padB}" stroke="var(--ink-soft)" stroke-width="1"></line>`;
+  svgContent += `<text x="${padL-6}" y="${padT+4}" text-anchor="end" font-family="var(--font-data)" font-size="9.5" fill="var(--ink-soft)">${showPercent ? '100%' : maxTotal}</text>`;
+  svgContent += `<text x="${padL-6}" y="${H-padB}" text-anchor="end" font-family="var(--font-data)" font-size="9.5" fill="var(--ink-soft)">0</text>`;
+
+  svg.innerHTML = svgContent;
+  svg.querySelectorAll('.class-hit').forEach(el => {
+    el.addEventListener('click', () => { activePeriod = el.dataset.period; activeClass = el.dataset.class; renderAll(); });
+    el.addEventListener('dblclick', () => {
+      const period = el.dataset.period;
+      const cls = el.dataset.class;
+      if (granularity === 'year') {
+        if (!availability.month) { setStatus("No month-level metadata available to zoom into for this corpus."); return; }
+        zoomYear = period;
+        zoomMonth = null;
+        granularity = 'month';
+      } else if (granularity === 'month') {
+        if (!availability.day) { setStatus("No day-level metadata available to zoom into for this corpus."); return; }
+        zoomMonth = period;
+        granularity = 'day';
+      } else {
+        return; // already at the finest granularity - nothing to zoom into
+      }
+      activeClass = cls;
+      activePeriod = null;
+      buildGranularityToggle();
+      renderAll();
+    });
+  });
+  svg.querySelectorAll('.period-label').forEach(el => {
+    el.addEventListener('click', () => { activePeriod = el.dataset.period; activeClass = null; renderAll(); });
+  });
+}
+
+function formatPval(p) {
+  if (p <= 0 || p < 0.0001) return 'p<0.0001';
+  if (p < 0.001) return 'p<0.001';
+  if (p < 0.01) return 'p<0.01';
+  if (p < 0.05) return 'p<0.05';
+  return `p=${p.toFixed(2)} (not significant)`;
+}
+
+function scoreSegment(seg) {
+  const words = wordsByClass[seg.class_id] || [];
+  const text = seg.text;
+  let score = 0;
+  const matched = [];
+  for (const w of words) {
+    if (text.includes(w.word)) {
+      score += w.chi2;
+      matched.push(w);
+    }
+  }
+  matched.sort((a,b) => b.chi2 - a.chi2);
+  return { score, matched: matched.slice(0, 3) };
+}
+
+function eventsForPeriod(period) {
+  return currentEvents.filter(e => e.granularity === granularity && e.period === period);
+}
+
+function renderQuotes() {
+  const head = document.getElementById('quotesHead');
+  const box = document.getElementById('quotes');
+  const actionBox = document.getElementById('eventAction');
+
+  if (!activePeriod) {
+    if (activeClass) {
+      const cls = classById(activeClass);
+      head.textContent = `${cls.label} — highlighted across every ${granularity}`;
+      box.innerHTML = `<div class="empty-note">Click a specific ${granularity} above to see ${cls.label}'s segments for it, or double-click again to zoom in further.</div>`;
+    } else {
+      head.textContent = 'Segments — pick a period';
+      box.innerHTML = `<div class="empty-note">Click a period on the chart above to see the segments behind it, ranked by how characteristic they are of their class. Double-click a class in a bar to zoom into it (year → month → day).</div>`;
+    }
+    actionBox.innerHTML = '';
+    return;
+  }
+
+  head.textContent = activeClass
+    ? `Segments — ${classById(activeClass).label} · ${activePeriod}`
+    : `Segments — all classes · ${activePeriod}`;
+  const periodEvents = eventsForPeriod(activePeriod);
+  const tagsHtml = periodEvents.map(ev => {
+    const c = ev.class_id ? classById(ev.class_id) : null;
+    return `<span class="event-tag" style="border-left:3px solid ${c ? c.hex : 'var(--ink-soft)'}">${c ? c.label + ' — ' : ''}${ev.title} <span class="rm" data-id="${ev.id}">✕</span></span>`;
+  }).join('');
+  actionBox.innerHTML = tagsHtml + `<button class="mini-btn" id="addEventBtn">+ Add annotation${activeClass ? ' for ' + classById(activeClass).label : ''}</button>`;
+
+  actionBox.querySelectorAll('.rm').forEach(el => {
+    el.addEventListener('click', async () => {
+      currentEvents = await postJson('/api/remove_event', { folder: folderPath, event_id: parseInt(el.dataset.id) });
+      renderAll();
+    });
+  });
+  document.getElementById('addEventBtn').addEventListener('click', async () => {
+    const scopeNote = activeClass ? ` (for ${classById(activeClass).label})` : ' (general, not tied to one class)';
+    const title = window.prompt(`What happened in this period${scopeNote}? Short title:`);
+    if (!title) return;
+    const note = window.prompt('One or two sentences of context (optional):') || '';
+    currentEvents = await postJson('/api/add_event', { folder: folderPath, granularity, period: activePeriod, class_id: activeClass, title, note });
+    renderAll();
+  });  const matches = filteredSegments().filter(s => s[granularity] === activePeriod && (!activeClass || s.class_id === activeClass));
+  if (!matches.length) {
+    box.innerHTML = `<div class="empty-note">No segment for this period${activeClass ? ' and class' : ''} with the current source filter.</div>`;
+    return;
+  }
+  const scored = matches.map(s => ({ seg: s, ...scoreSegment(s) }));
+  scored.sort((a,b) => b.score - a.score);
+
+  box.innerHTML = scored.slice(0, 40).map(({seg, matched}) => {
+    const c = classById(seg.class_id);
+    const matchStr = matched.map(m => `${m.word} — χ²=${m.chi2.toFixed(0)}, ${formatPval(m.pval)}`).join(' · ');
+    return `<div class="quote-card" style="border-left-color:${c ? c.hex : 'var(--ink-soft)'}">
+      <div class="quote-meta">
+        <span>${sourceOf(seg) || ''}${seg.type ? ' · ' + seg.type : ''}${rawnbHtml(seg)}${!activeClass ? ' · ' + (c ? c.label : seg.class_id) : ''}</span>
+      </div>
+      ${seg.title ? `<div style="font-weight:600; margin-bottom:3px;">${seg.title}</div>` : ''}
+      ${seg.text}
+      ${matchStr ? `<div class="score-tag" style="margin-top:6px;">Characteristic words found: ${matchStr}</div>` : ''}
+      <button class="mini-btn dossier-btn" data-seg="${seg.id}" style="margin-top:6px;">${isInDossier(seg.id) ? '✓ In dossier' : '+ Add to dossier'}</button>
+    </div>`;
+  }).join('');
+  box.querySelectorAll('.dossier-btn').forEach(wireDossierButton);
+}
+
+function computeSwing() {
+  const { series } = computeSeries();
+  const idx = series.findIndex(p => p.period === activePeriod);
+  if (idx === -1) return null;
+  const point = series[idx];
+  const total = Object.values(point.counts).reduce((a,b)=>a+b,0) || 1;
+  const prevPoint = idx > 0 ? series[idx-1] : null;
+  const prevTotal = prevPoint ? (Object.values(prevPoint.counts).reduce((a,b)=>a+b,0) || 1) : null;
+
+  let best = null;
+  allClasses.forEach(c => {
+    const count = point.counts[c.id] || 0;
+    const shareNow = count / total;
+    if (prevPoint) {
+      const prevCount = prevPoint.counts[c.id] || 0;
+      const sharePrev = prevCount / prevTotal;
+      const diff = shareNow - sharePrev;
+      if (!best || Math.abs(diff) > Math.abs(best.diff)) {
+        best = { cls: c, period: point.period, count, total, shareNow,
+                 prevPeriod: prevPoint.period, prevCount, prevTotal, sharePrev, diff };
+      }
+    } else {
+      if (!best || shareNow > best.shareNow) {
+        best = { cls: c, period: point.period, count, total, shareNow, prevPeriod: null };
+      }
+    }
+  });
+  return best;
+}
+
+function formatSwing(best) {
+  if (!best) return '';
+  const pct = v => Math.round(v * 100) + '%';
+  if (best.prevPeriod === null) {
+    return `${best.cls.label} made up ${pct(best.shareNow)} of ${best.period}'s classified segments (${best.count} of ${best.total}) — there's no earlier period in this view to compare against.`;
+  }
+  const dir = best.diff >= 0 ? 'up' : 'down';
+  const pts = Math.abs(Math.round(best.diff * 100));
+  return `${best.cls.label} made up ${pct(best.shareNow)} of ${best.period}'s segments (${best.count} of ${best.total}), ${dir} ${pts} point${pts === 1 ? '' : 's'} from ${pct(best.sharePrev)} (${best.prevCount} of ${best.prevTotal}) in ${best.prevPeriod}.`;
+}
+
+function computeClassSwing(classId) {
+  const { series } = computeSeries();
+  const idx = series.findIndex(p => p.period === activePeriod);
+  if (idx === -1) return null;
+  const point = series[idx];
+  const total = Object.values(point.counts).reduce((a,b)=>a+b,0) || 1;
+  const count = point.counts[classId] || 0;
+  const shareNow = count / total;
+  const prevPoint = idx > 0 ? series[idx-1] : null;
+  if (!prevPoint) return { cls: classById(classId), period: point.period, count, total, shareNow, prevPeriod: null };
+  const prevTotal = Object.values(prevPoint.counts).reduce((a,b)=>a+b,0) || 1;
+  const prevCount = prevPoint.counts[classId] || 0;
+  const sharePrev = prevCount / prevTotal;
+  return { cls: classById(classId), period: point.period, count, total, shareNow,
+           prevPeriod: prevPoint.period, prevCount, prevTotal, sharePrev, diff: shareNow - sharePrev };
+}
+
+function renderWhatHappened() {
+  const wrapPanel = document.getElementById('whPanel');
+  const box = document.getElementById('whatHappened');
+  if (!activePeriod) { wrapPanel.style.display = 'none'; return; }
+  const evs = eventsForPeriod(activePeriod);
+  if (!evs.length) { wrapPanel.style.display = 'none'; return; }
+  wrapPanel.style.display = 'block';
+
+  box.innerHTML = evs.map(ev => {
+    const c = ev.class_id ? classById(ev.class_id) : null;
+    const swing = ev.class_id ? computeClassSwing(ev.class_id) : computeSwing();
+    const matches = filteredSegments().filter(s => s[granularity] === activePeriod && (!ev.class_id || s.class_id === ev.class_id));
+    const scored = matches.map(s => ({ seg: s, ...scoreSegment(s) }));
+    scored.sort((a,b) => b.score - a.score);
+    const heads = scored.slice(0, 3);
+    return `
+      <div class="callout" style="margin-bottom:18px; padding-bottom:18px; border-bottom:1px dashed var(--edge);">
+        <div class="callout-text">
+          <div class="kicker" style="color:${c ? c.hex : 'var(--ink-soft)'}">${activePeriod}${c ? ' · ' + c.label : ' · all classes'} — ${ev.title}</div>
+          ${ev.note ? `<p style="margin:0 0 8px;">${ev.note}</p>` : ''}
+          <div class="swing">${swing ? formatSwing(swing) : 'Not enough data to compute a change here.'}</div>
+        </div>
+        <div class="headlines">
+          ${heads.length ? heads.map(({seg}) => {
+            const cc = classById(seg.class_id);
+            return `<div class="headline-card" style="border-left-color:${cc ? cc.hex : 'var(--ink-soft)'}">
+              <div class="quote-meta"><span>${sourceOf(seg) || ''}${seg.type ? ' · ' + seg.type : ''}${rawnbHtml(seg)}</span></div>
+              ${seg.title ? `<div style="font-weight:600; margin-bottom:3px;">${seg.title}</div>` : ''}
+              ${seg.text}
+              <button class="mini-btn dossier-btn" data-seg="${seg.id}" style="margin-top:6px;">${isInDossier(seg.id) ? '✓ In dossier' : '+ Add to dossier'}</button>
+            </div>`;
+          }).join('') : '<div class="empty-note">No segment available.</div>'}
+        </div>
+      </div>`;
+  }).join('');
+  box.querySelectorAll('.dossier-btn').forEach(wireDossierButton);
+}
+
+function renderAnnotationsStrip() {
+  const panel = document.getElementById('annotationsPanel');
+  const strip = document.getElementById('annotationsStrip');
+  if (!currentEvents.length) { panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  const sorted = [...currentEvents].sort((a,b) => a.period.localeCompare(b.period));
+  strip.innerHTML = sorted.map(ev => {
+    const c = ev.class_id ? classById(ev.class_id) : null;
+    return `<div class="annotation-chip" style="border-left-color:${c ? c.hex : 'var(--ink-soft)'}"
+                 data-g="${ev.granularity}" data-period="${ev.period}" data-class="${ev.class_id || ''}">
+      <div class="annotation-date">${ev.period}${c ? ' · ' + c.label : ''}</div>
+      <div class="annotation-title">${ev.title}</div>
+    </div>`;
+  }).join('');
+  strip.querySelectorAll('.annotation-chip').forEach(el => {
+    el.addEventListener('click', () => {
+      granularity = el.dataset.g;
+      activePeriod = el.dataset.period;
+      activeClass = el.dataset.class || null;
+      buildGranularityToggle();
+      renderAll();
+      document.getElementById('whPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+}
+</script>
+</body>
+</html>
